@@ -148,7 +148,7 @@ func remove(dryRun bool, file string) {
 		if err := os.Remove(file); err != nil {
 			log.Warningf("error deleting %n: %v", file, err)
 		} else {
-			log.Noticef("deleted %n", file)
+			log.Noticef("deleted %s", file)
 		}
 	}
 
