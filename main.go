@@ -26,9 +26,11 @@ type info struct {
 
 type bySize []info
 
-func (a bySize) Len() int           { return len(a) }
-func (a bySize) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a bySize) Less(i, j int) bool { return a[i].Size < a[j].Size }
+func (a bySize) Len() int      { return len(a) }
+func (a bySize) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a bySize) Less(i, j int) bool {
+	return a[i].Size*uint64(len(a[i].Names)) < a[j].Size*uint64(len(a[j].Names))
+}
 
 func getInput(prompt string, validator func(string) bool) (string, error) {
 	// Reader to read from user input.
@@ -146,25 +148,25 @@ func main() {
 			if len(files) > 1 {
 				dupes = append(dupes, info{Size: size, Names: files})
 				fcount += len(files)
-				tsize += size
+				tsize += size * uint64(len(files))
 			}
 		}
 	}
 	fmt.Printf("Found %d sets of duplicate files\n", len(dupes))
 	fmt.Printf("Total file count: %d\n", fcount)
-	fmt.Printf("Total size used: %d\n", tsize)
+	fmt.Printf("Total size used: %s\n", humanize.Bytes(tsize))
 
 	sort.Sort(sort.Reverse(bySize(dupes)))
 
 	fmt.Printf("\nReviewing results:\nFor each duplicate fileset, select 'f' to delete all but the first file, 'a' to keep all files, or 'n' (e.g. 2) to delete all except the second file.\n")
 
-	for _, dupe := range dupes {
+	for i, dupe := range dupes {
 		keep := -1
 		names := ""
-		for i, n := range dupe.Names {
-			names += fmt.Sprintf("%d: %s\n", i+1, n)
+		for j, n := range dupe.Names {
+			names += fmt.Sprintf("%d: %s\n", j+1, n)
 		}
-		_, err := getInput(fmt.Sprintf("%s:\n%s\nKeep [F]irst/[a]ll/[n]th? ", humanize.Bytes(dupe.Size*uint64(len(dupe.Names)-1)), names), func(v string) bool {
+		_, err := getInput(fmt.Sprintf("\n%d of %d  %s:\n%s\nKeep [F]irst/[a]ll/[n]th? ", i+1, len(dupes), humanize.Bytes(dupe.Size*uint64(len(dupe.Names)-1)), names), func(v string) bool {
 			switch strings.ToLower(v) {
 			case "f":
 				keep = 0
