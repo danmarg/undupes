@@ -224,7 +224,7 @@ func runInteractive(dryRun bool) error {
 		}
 		_, err := getInput(fmt.Sprintf("\n%d of %d  %s:\n%s\nKeep [F]irst/[a]ll/[n]th? ", i+1, len(dupes), humanize.Bytes(dupe.Size*uint64(len(dupe.Names)-1)), names), func(v string) bool {
 			switch strings.ToLower(v) {
-			case "f":
+			case "f", "":
 				keep = 0
 				return true
 			case "a":
