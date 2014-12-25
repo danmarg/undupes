@@ -6,7 +6,7 @@ import (
 	"github.com/codegangsta/cli"
 	dupes "github.com/danmarg/undupes/libdupes"
 	"github.com/dustin/go-humanize"
-	"log"
+	"github.com/siddontang/go-log/log"
 	"os"
 	"regexp"
 	"strconv"
@@ -25,8 +25,35 @@ func main() {
 			Name:      "interactive",
 			ShortName: "i",
 			Usage:     "interactive mode",
+			Flags: []cli.Flag{
+				cli.IntFlag{
+					Name:  "v",
+					Usage: "log level",
+				},
+			},
 			Action: func(c *cli.Context) {
+				log.SetLevel(c.Int("v"))
 				if err := runInteractive(c.Bool("dry_run")); err != nil {
+					fmt.Println(err)
+				}
+			},
+		},
+		{
+			Name:      "print",
+			ShortName: "p",
+			Usage:     "print duplicates",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "directory, d",
+					Usage: "directory in which to find duplicates (required)",
+				},
+				cli.StringFlag{
+					Name:  "output, o",
+					Usage: "output file",
+				},
+			},
+			Action: func(c *cli.Context) {
+				if err := runPrint(c.String("directory"), c.String("output")); err != nil {
 					fmt.Println(err)
 				}
 			},
@@ -56,6 +83,10 @@ func main() {
 					Name:  "dry_run",
 					Usage: "simulate (log but don't delete files)",
 				},
+				cli.IntFlag{
+					Name:  "v",
+					Usage: "log level",
+				},
 			},
 			Action: func(c *cli.Context) {
 				// Check for required arguments.
@@ -67,6 +98,7 @@ func main() {
 					fmt.Println("--prefer is required")
 					return
 				}
+				log.SetLevel(c.Int("v"))
 				// Compile regexps.
 				var prefer, over *regexp.Regexp
 				var err error
@@ -87,16 +119,16 @@ func main() {
 			},
 		},
 	}
-	app.Run(os.Args)
+	app.RunAndExitOnError()
 }
 
 func remove(dryRun bool, file string) {
 	if dryRun {
-		log.Printf("DRY RUN: remove %s", file)
+		log.Info("DRY RUN: remove %s", file)
 	} else {
-		//	if err := os.Remove(file); err != nil {
-		//		log.Printf("Error deleting %n: %v", file, err)
-		//	}
+		if err := os.Remove(file); err != nil {
+			log.Warn("Error deleting %n: %v", file, err)
+		}
 	}
 
 }
@@ -189,7 +221,7 @@ func runInteractive(dryRun bool) error {
 			}
 		})
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal("%v", err)
 		}
 		if keep >= 0 {
 			for i, n := range dupe.Names {
@@ -197,6 +229,36 @@ func runInteractive(dryRun bool) error {
 					remove(dryRun, n)
 				}
 			}
+		}
+	}
+	return nil
+}
+
+func runPrint(root string, output string) error {
+	dupes, err := getDupesAndPrintSummary(root)
+	if err != nil {
+		return err
+	}
+
+	var f *os.File
+	if output != "" {
+		if f, err = os.Create(output); err != nil {
+			return err
+		}
+	}
+	defer func() {
+		if f != nil {
+			if err := f.Close(); err != nil {
+				log.Warn("%v", err)
+			}
+		}
+	}()
+	for _, dupe := range dupes {
+		l := fmt.Sprintf("%s * %d => %s\n", humanize.Bytes(dupe.Size), len(dupe.Names), strings.Join(dupe.Names, ", "))
+		if f != nil {
+			f.Write([]byte(l))
+		} else {
+			fmt.Printf(l)
 		}
 	}
 	return nil
@@ -219,7 +281,7 @@ func runAutomatic(dryRun bool, root string, prefer *regexp.Regexp, over *regexp.
 				om = over.Match(nb)
 			}
 			if pm && om {
-				log.Printf("both --prefer and --over matched %s", n)
+				log.Warn("both --prefer and --over matched %s", n)
 			}
 			if pm {
 				p[n] = struct{}{}
