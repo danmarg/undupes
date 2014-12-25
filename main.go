@@ -3,12 +3,34 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"github.com/codegangsta/cli"
+	dupes "github.com/danmarg/undupes/libdupes"
 	"github.com/dustin/go-humanize"
 	"log"
 	"os"
 	"strconv"
 	"strings"
 )
+
+func main() {
+	app := cli.NewApp()
+	app.Name = "undupes"
+	app.Usage = "manage duplicate files"
+	app.Author = "Daniel Margolis"
+	app.Email = "dan@af0.net"
+	app.Version = "0.1"
+	app.Commands = []cli.Command{
+		{
+			Name:      "interactive",
+			ShortName: "i",
+			Usage:     "interactive mode",
+			Action: func(c *cli.Context) {
+				runInteractively()
+			},
+		},
+	}
+	app.Run(os.Args)
+}
 
 func getInput(prompt string, validator func(string) bool) (string, error) {
 	// Reader to read from user input.
@@ -30,8 +52,7 @@ func getInput(prompt string, validator func(string) bool) (string, error) {
 	}
 	return val, nil
 }
-
-func main() {
+func runInteractively() {
 	// Get parent dir.
 	root, err := getInput("Enter parent directory to scan for duplicates in: ", func(f string) bool {
 		i, err := os.Stat(f)
@@ -47,7 +68,8 @@ func main() {
 	if !os.IsPathSeparator(root[len(root)-1]) {
 		root = fmt.Sprintf("%s%c", root, os.PathSeparator)
 	}
-	dupes, err := Dupes(root)
+	fmt.Printf("Indexing...")
+	dupes, err := dupes.Dupes(root)
 	if err != nil {
 		log.Fatal(err)
 	}
