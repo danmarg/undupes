@@ -3,15 +3,26 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"github.com/cenkalti/log"
 	"github.com/codegangsta/cli"
 	dupes "github.com/danmarg/undupes/libdupes"
 	"github.com/dustin/go-humanize"
-	"github.com/siddontang/go-log/log"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
 )
+
+// Horrible hack to convert -v to log Levels.
+var orderedLevels []log.Level = []log.Level{log.DEBUG, log.INFO, log.NOTICE, log.WARNING, log.ERROR, log.CRITICAL}
+
+func setLogLevel(l int) error {
+	if l >= 0 && l < len(orderedLevels) {
+		log.SetLevel(orderedLevels[l])
+		return nil
+	}
+	return fmt.Errorf("invalid log level specified")
+}
 
 func main() {
 	app := cli.NewApp()
@@ -29,10 +40,14 @@ func main() {
 				cli.IntFlag{
 					Name:  "v",
 					Usage: "log level",
+					Value: 3, // Don't print as much in interactive mode.
 				},
 			},
 			Action: func(c *cli.Context) {
-				log.SetLevel(c.Int("v"))
+				if err := setLogLevel(c.Int("v")); err != nil {
+					fmt.Println(err)
+					return
+				}
 				if err := runInteractive(c.Bool("dry_run")); err != nil {
 					fmt.Println(err)
 				}
@@ -86,6 +101,7 @@ func main() {
 				cli.IntFlag{
 					Name:  "v",
 					Usage: "log level",
+					Value: 1,
 				},
 			},
 			Action: func(c *cli.Context) {
@@ -98,7 +114,10 @@ func main() {
 					fmt.Println("--prefer is required")
 					return
 				}
-				log.SetLevel(c.Int("v"))
+				if err := setLogLevel(c.Int("v")); err != nil {
+					fmt.Println(err)
+					return
+				}
 				// Compile regexps.
 				var prefer, over *regexp.Regexp
 				var err error
@@ -124,10 +143,12 @@ func main() {
 
 func remove(dryRun bool, file string) {
 	if dryRun {
-		log.Info("DRY RUN: remove %s", file)
+		log.Noticef("DRY RUN: delete %s", file)
 	} else {
 		if err := os.Remove(file); err != nil {
-			log.Warn("Error deleting %n: %v", file, err)
+			log.Warningf("error deleting %n: %v", file, err)
+		} else {
+			log.Noticef("deleted %n", file)
 		}
 	}
 
@@ -221,7 +242,7 @@ func runInteractive(dryRun bool) error {
 			}
 		})
 		if err != nil {
-			log.Fatal("%v", err)
+			log.Fatalln(err)
 		}
 		if keep >= 0 {
 			for i, n := range dupe.Names {
@@ -249,7 +270,7 @@ func runPrint(root string, output string) error {
 	defer func() {
 		if f != nil {
 			if err := f.Close(); err != nil {
-				log.Warn("%v", err)
+				log.Warningln(err)
 			}
 		}
 	}()
@@ -281,7 +302,7 @@ func runAutomatic(dryRun bool, root string, prefer *regexp.Regexp, over *regexp.
 				om = over.Match(nb)
 			}
 			if pm && om {
-				log.Warn("both --prefer and --over matched %s", n)
+				log.Warningf("both --prefer and --over matched %s", n)
 			}
 			if pm {
 				p[n] = struct{}{}
@@ -301,7 +322,7 @@ func runAutomatic(dryRun bool, root string, prefer *regexp.Regexp, over *regexp.
 					dbg += k + ", "
 				}
 			}
-			log.Debug("%s", dbg)
+			log.Debugf("%s", dbg)
 			// Logic is here.
 			if over != nil {
 				if len(o) > 0 {
