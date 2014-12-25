@@ -8,6 +8,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"log"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -25,11 +26,79 @@ func main() {
 			ShortName: "i",
 			Usage:     "interactive mode",
 			Action: func(c *cli.Context) {
-				runInteractively()
+				if err := runInteractive(c.Bool("dry_run")); err != nil {
+					fmt.Println(err)
+				}
+			},
+		},
+		{
+			Name:      "auto",
+			ShortName: "a",
+			Usage:     "automatically resolve duplicates",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "directory, d",
+					Usage: "directory in which to find duplicates (required)",
+				},
+				cli.StringFlag{
+					Name:  "prefer, p",
+					Usage: "prefer to keep files matching this pattern",
+				},
+				cli.StringFlag{
+					Name:  "over, o",
+					Usage: "used with --prefer; will restrict preferred files to those where the duplicate matches --over",
+				},
+				cli.BoolFlag{
+					Name:  "invert, i",
+					Usage: "invert matching logic; preferred files with be prioritized for deletion rather than retention",
+				},
+				cli.BoolFlag{
+					Name:  "dry_run",
+					Usage: "simulate (log but don't delete files)",
+				},
+			},
+			Action: func(c *cli.Context) {
+				// Check for required arguments.
+				if c.String("directory") == "" {
+					fmt.Println("--directory is required")
+					return
+				}
+				if c.String("prefer") == "" {
+					fmt.Println("--prefer is required")
+					return
+				}
+				// Compile regexps.
+				var prefer, over *regexp.Regexp
+				var err error
+				if prefer, err = regexp.Compile(c.String("prefer")); err != nil {
+					fmt.Println("invalid regexp specified for --prefer")
+					return
+				}
+				if c.String("over") != "" {
+					if over, err = regexp.Compile(c.String("over")); err != nil {
+						fmt.Println("invalid regexp specified for --over")
+						return
+					}
+				}
+				// Do deduplication.
+				if err = runAutomatic(c.Bool("dry_run"), c.String("directory"), prefer, over, c.Bool("invert")); err != nil {
+					fmt.Println(err)
+				}
 			},
 		},
 	}
 	app.Run(os.Args)
+}
+
+func remove(dryRun bool, file string) {
+	if dryRun {
+		log.Printf("DRY RUN: remove %s", file)
+	} else {
+		//	if err := os.Remove(file); err != nil {
+		//		log.Printf("Error deleting %n: %v", file, err)
+		//	}
+	}
+
 }
 
 func getInput(prompt string, validator func(string) bool) (string, error) {
@@ -52,37 +121,45 @@ func getInput(prompt string, validator func(string) bool) (string, error) {
 	}
 	return val, nil
 }
-func runInteractively() {
-	// Get parent dir.
-	root, err := getInput("Enter parent directory to scan for duplicates in: ", func(f string) bool {
-		i, err := os.Stat(f)
-		if err != nil {
-			log.Print(err)
-			return false
-		}
-		return i.IsDir()
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
+
+func getDupesAndPrintSummary(root string) ([]dupes.Info, error) {
 	if !os.IsPathSeparator(root[len(root)-1]) {
 		root = fmt.Sprintf("%s%c", root, os.PathSeparator)
 	}
 	fmt.Printf("Indexing...")
 	dupes, err := dupes.Dupes(root)
 	if err != nil {
-		log.Fatal(err)
+		return dupes, err
 	}
 	fcount := 0
 	tsize := uint64(0)
 	for _, i := range dupes {
-		fcount += len(i.Names)
-		tsize += i.Size * uint64(len(i.Names))
+		fcount += len(i.Names) - 1
+		tsize += i.Size * uint64(len(i.Names)-1)
 	}
 
-	fmt.Printf("Found %d sets of duplicate files\n", len(dupes))
+	fmt.Printf("\rFound %d sets of duplicate files\n", len(dupes))
 	fmt.Printf("Total file count: %d\n", fcount)
 	fmt.Printf("Total size used: %s\n", humanize.Bytes(tsize))
+	return dupes, err
+}
+
+func runInteractive(dryRun bool) error {
+	// Get parent dir.
+	root, err := getInput("Enter parent directory to scan for duplicates in: ", func(f string) bool {
+		i, err := os.Stat(f)
+		if err != nil {
+			return false
+		}
+		return i.IsDir()
+	})
+	if err != nil {
+		return err
+	}
+	dupes, err := getDupesAndPrintSummary(root)
+	if err != nil {
+		return err
+	}
 
 	fmt.Printf("\nReviewing results:\nFor each duplicate fileset, select 'f' to delete all but the first file, 'a' to keep all files, or 'n' (e.g. 2) to delete all except the second file.\n")
 
@@ -117,11 +194,66 @@ func runInteractively() {
 		if keep >= 0 {
 			for i, n := range dupe.Names {
 				if i != keep {
-					if err := os.Remove(n); err != nil {
-						log.Printf("Error deleting %n: %v", n, err)
-					}
+					remove(dryRun, n)
 				}
 			}
 		}
 	}
+	return nil
+}
+
+func runAutomatic(dryRun bool, root string, prefer *regexp.Regexp, over *regexp.Regexp, invert bool) error {
+	dupes, err := getDupesAndPrintSummary(root)
+	if err != nil {
+		return err
+	}
+
+	for _, dupe := range dupes {
+		p := make(map[string]struct{})
+		o := make(map[string]struct{})
+		for _, n := range dupe.Names {
+			nb := []byte(n)
+			pm := prefer.Match(nb)
+			om := false
+			if over != nil {
+				om = over.Match(nb)
+			}
+			if pm && om {
+				log.Printf("both --prefer and --over matched %s", n)
+			}
+			if pm {
+				p[n] = struct{}{}
+			} else if om {
+				o[n] = struct{}{}
+			}
+		}
+		if len(p) > 0 { // If we found a preferred match.
+			if over != nil {
+				if len(o) > 0 {
+					// If prefer and over are both specified, and both match, remove the non-preferred matches.
+					if invert {
+						for n := range p {
+							remove(dryRun, n)
+						}
+					} else {
+						for n := range o {
+							remove(dryRun, n)
+						}
+					}
+				}
+			} else {
+				// If over is not specified, keep only the preferred, but (for the case of --invert) only when preferred is not everything.
+				if len(p) < len(dupe.Names) {
+					for _, n := range dupe.Names {
+						if _, ok := p[n]; ok && invert || !ok && !invert {
+							remove(dryRun, n)
+						}
+					}
+				}
+
+			}
+		}
+	}
+
+	return nil
 }
