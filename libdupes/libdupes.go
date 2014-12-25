@@ -14,6 +14,7 @@ type filesWithHashes struct {
 	Hashes   map[[md5.Size]byte][]string
 }
 
+// Info contains information on duplicate file sets--specifically, the per-file size in bytes and the file paths.
 type Info struct {
 	Size  uint64
 	Names []string
@@ -51,6 +52,7 @@ func hash(path string) ([md5.Size]byte, error) {
 	return sum, nil
 }
 
+// Dupes finds all duplicate files starting at the directory specified by "root".
 func Dupes(root string) ([]Info, error) {
 	// Get files.
 	files := make(map[uint64]*filesWithHashes)
