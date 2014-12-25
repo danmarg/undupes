@@ -291,7 +291,7 @@ func runAutomatic(dryRun bool, root string, prefer *regexp.Regexp, over *regexp.
 		}
 		if len(p) > 0 { // If we found a preferred match.
 			// Generate debug line.
-			dbg := fmt.Sprintf("processing %s\n\tprefer:", strings.Join(dupe.Names, ", "))
+			dbg := fmt.Sprintf("processing %s\n\tprefer: ", strings.Join(dupe.Names, ", "))
 			for k := range p {
 				dbg += k + ", "
 			}
