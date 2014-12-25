@@ -290,6 +290,19 @@ func runAutomatic(dryRun bool, root string, prefer *regexp.Regexp, over *regexp.
 			}
 		}
 		if len(p) > 0 { // If we found a preferred match.
+			// Generate debug line.
+			dbg := fmt.Sprintf("processing %s\n\tprefer:", strings.Join(dupe.Names, ", "))
+			for k := range p {
+				dbg += k + ", "
+			}
+			if len(o) > 0 {
+				dbg += "\n\tover: "
+				for k := range o {
+					dbg += k + ", "
+				}
+			}
+			log.Debug("%s", dbg)
+			// Logic is here.
 			if over != nil {
 				if len(o) > 0 {
 					// If prefer and over are both specified, and both match, remove the non-preferred matches.
