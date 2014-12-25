@@ -37,6 +37,10 @@ func main() {
 			ShortName: "i",
 			Usage:     "interactive mode",
 			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "directory, d",
+					Usage: "directory in which to find duplicates (required)",
+				},
 				cli.IntFlag{
 					Name:  "v",
 					Usage: "log level",
@@ -48,7 +52,7 @@ func main() {
 					fmt.Println(err)
 					return
 				}
-				if err := runInteractive(c.Bool("dry_run")); err != nil {
+				if err := runInteractive(c.Bool("dry_run"), c.String("directory")); err != nil {
 					fmt.Println(err)
 				}
 			},
@@ -197,17 +201,20 @@ func getDupesAndPrintSummary(root string) ([]dupes.Info, error) {
 	return dupes, err
 }
 
-func runInteractive(dryRun bool) error {
-	// Get parent dir.
-	root, err := getInput("Enter parent directory to scan for duplicates in: ", func(f string) bool {
-		i, err := os.Stat(f)
+func runInteractive(dryRun bool, root string) error {
+	var err error
+	if root == "" {
+		// Get parent dir.
+		root, err = getInput("Enter parent directory to scan for duplicates in: ", func(f string) bool {
+			i, err := os.Stat(f)
+			if err != nil {
+				return false
+			}
+			return i.IsDir()
+		})
 		if err != nil {
-			return false
+			return err
 		}
-		return i.IsDir()
-	})
-	if err != nil {
-		return err
 	}
 	dupes, err := getDupesAndPrintSummary(root)
 	if err != nil {
