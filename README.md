@@ -34,7 +34,7 @@ In interactive mode, Undupes prompts the user to resolve every duplicate file se
     1: test/b
     2: test/a
 
-    Keep [F]irst/[a]ll/[n]th?`
+    Keep [F]irst/[a]ll/[n]th?
 
 Automatic
 ---------
