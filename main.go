@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"github.com/cenkalti/log"
+	"github.com/cheggaaa/pb"
 	"github.com/codegangsta/cli"
 	dupes "github.com/danmarg/undupes/libdupes"
 	"github.com/dustin/go-humanize"
@@ -184,7 +185,14 @@ func getDupesAndPrintSummary(root string) ([]dupes.Info, error) {
 		root = fmt.Sprintf("%s%c", root, os.PathSeparator)
 	}
 	fmt.Printf("Indexing...")
-	dupes, err := dupes.Dupes(root)
+	var b *pb.ProgressBar
+	dupes, err := dupes.Dupes(root, func(cur int, outof int) {
+		if b == nil {
+			b = pb.StartNew(outof)
+		}
+		b.Set(cur)
+	})
+	b.Finish()
 	if err != nil {
 		return dupes, err
 	}
