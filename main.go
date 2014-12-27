@@ -197,15 +197,15 @@ func getDupesAndPrintSummary(root string) ([]dupes.Info, error) {
 		return dupes, err
 	}
 	fcount := 0
-	tsize := uint64(0)
+	tsize := int64(0)
 	for _, i := range dupes {
 		fcount += len(i.Names) - 1
-		tsize += i.Size * uint64(len(i.Names)-1)
+		tsize += i.Size * int64(len(i.Names)-1)
 	}
 
 	fmt.Printf("\rFound %d sets of duplicate files\n", len(dupes))
 	fmt.Printf("Total file count: %d\n", fcount)
-	fmt.Printf("Total size used: %s\n", humanize.Bytes(tsize))
+	fmt.Printf("Total size used: %s\n", humanize.Bytes(uint64(tsize)))
 	return dupes, err
 }
 
@@ -237,7 +237,7 @@ func runInteractive(dryRun bool, root string) error {
 		for j, n := range dupe.Names {
 			names += fmt.Sprintf("%d: %s\n", j+1, n)
 		}
-		_, err := getInput(fmt.Sprintf("\n%d of %d  %s:\n%s\nKeep [F]irst/[a]ll/[n]th? ", i+1, len(dupes), humanize.Bytes(dupe.Size*uint64(len(dupe.Names)-1)), names), func(v string) bool {
+		_, err := getInput(fmt.Sprintf("\n%d of %d  %s:\n%s\nKeep [F]irst/[a]ll/[n]th? ", i+1, len(dupes), humanize.Bytes(uint64(dupe.Size*int64(len(dupe.Names)-1))), names), func(v string) bool {
 			switch strings.ToLower(v) {
 			case "f", "":
 				keep = 0
@@ -290,7 +290,7 @@ func runPrint(root string, output string) error {
 		}
 	}()
 	for _, dupe := range dupes {
-		l := fmt.Sprintf("%s * %d => %s\n", humanize.Bytes(dupe.Size), len(dupe.Names), strings.Join(dupe.Names, ", "))
+		l := fmt.Sprintf("%s * %d => %s\n", humanize.Bytes(uint64(dupe.Size)), len(dupe.Names), strings.Join(dupe.Names, ", "))
 		if f != nil {
 			f.Write([]byte(l))
 		} else {
