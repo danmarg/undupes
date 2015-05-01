@@ -73,6 +73,14 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) {
+				if c.String("directory") == "" {
+					fmt.Println("--directory required")
+					return
+				}
+				if c.String("output") == "" {
+					fmt.Println("--output required")
+					return
+				}
 				if err := runPrint(c.String("directory"), c.String("output")); err != nil {
 					fmt.Println(err)
 				}
