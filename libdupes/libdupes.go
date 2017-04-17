@@ -69,10 +69,11 @@ func min(x, y int64) int64 {
 }
 
 // Dupes finds all duplicate files starting at the directory specified by "root". If specified, progressCb will be called to update the file processing progress.
-func Dupes(root string, progressCb func(cur int, outof int)) ([]Info, error) {
+func Dupes(roots []string, progressCb func(cur int, outof int)) ([]Info, error) {
 	// Get files.
 	// In order to enable the progress callback, we first list all the files (which should be relatively cheap) and then reiterate through the index to actually detect duplicates.
 	pending := make(map[string]int64)
+        for _, root := range roots {
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if info.IsDir() {
 			return nil
@@ -80,6 +81,7 @@ func Dupes(root string, progressCb func(cur int, outof int)) ([]Info, error) {
 		pending[path] = int64(info.Size())
 		return nil
 	})
+      }
 	files := make(map[int64]*filesWithHashes)
 	i := 0
 	for path, size := range pending {

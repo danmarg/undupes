@@ -38,7 +38,7 @@ func main() {
 			ShortName: "i",
 			Usage:     "interactive mode",
 			Flags: []cli.Flag{
-				cli.StringFlag{
+				cli.StringSliceFlag{
 					Name:  "directory, d",
 					Usage: "directory in which to find duplicates (required)",
 				},
@@ -53,7 +53,7 @@ func main() {
 					fmt.Println(err)
 					return
 				}
-				if err := runInteractive(c.Bool("dry_run"), c.String("directory")); err != nil {
+				if err := runInteractive(c.Bool("dry_run"), c.StringSlice("directory")); err != nil {
 					fmt.Println(err)
 				}
 			},
@@ -63,7 +63,7 @@ func main() {
 			ShortName: "p",
 			Usage:     "print duplicates",
 			Flags: []cli.Flag{
-				cli.StringFlag{
+				cli.StringSliceFlag{
 					Name:  "directory, d",
 					Usage: "directory in which to find duplicates (required)",
 				},
@@ -73,7 +73,7 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) {
-				if c.String("directory") == "" {
+				if len(c.StringSlice("directory")) == 0 {
 					fmt.Println("--directory required")
 					return
 				}
@@ -81,7 +81,7 @@ func main() {
 					fmt.Println("--output required")
 					return
 				}
-				if err := runPrint(c.String("directory"), c.String("output")); err != nil {
+				if err := runPrint(c.StringSlice("directory"), c.String("output")); err != nil {
 					fmt.Println(err)
 				}
 			},
@@ -91,7 +91,7 @@ func main() {
 			ShortName: "a",
 			Usage:     "automatically resolve duplicates",
 			Flags: []cli.Flag{
-				cli.StringFlag{
+				cli.StringSliceFlag{
 					Name:  "directory, d",
 					Usage: "directory in which to find duplicates (required)",
 				},
@@ -119,7 +119,7 @@ func main() {
 			},
 			Action: func(c *cli.Context) {
 				// Check for required arguments.
-				if c.String("directory") == "" {
+				if len(c.StringSlice("directory")) == 0 {
 					fmt.Println("--directory is required")
 					return
 				}
@@ -145,7 +145,7 @@ func main() {
 					}
 				}
 				// Do deduplication.
-				if err = runAutomatic(c.Bool("dry_run"), c.String("directory"), prefer, over, c.Bool("invert")); err != nil {
+				if err = runAutomatic(c.Bool("dry_run"), c.StringSlice("directory"), prefer, over, c.Bool("invert")); err != nil {
 					fmt.Println(err)
 				}
 			},
@@ -188,13 +188,10 @@ func getInput(prompt string, validator func(string) bool) (string, error) {
 	return val, nil
 }
 
-func getDupesAndPrintSummary(root string) ([]dupes.Info, error) {
-	if !os.IsPathSeparator(root[len(root)-1]) {
-		root = fmt.Sprintf("%s%c", root, os.PathSeparator)
-	}
+func getDupesAndPrintSummary(roots []string) ([]dupes.Info, error) {
 	fmt.Printf("Indexing...")
 	var b *pb.ProgressBar
-	dupes, err := dupes.Dupes(root, func(cur int, outof int) {
+	dupes, err := dupes.Dupes(roots, func(cur int, outof int) {
 		if b == nil {
 			b = pb.StartNew(outof)
 		}
@@ -217,11 +214,11 @@ func getDupesAndPrintSummary(root string) ([]dupes.Info, error) {
 	return dupes, err
 }
 
-func runInteractive(dryRun bool, root string) error {
+func runInteractive(dryRun bool, roots []string) error {
 	var err error
-	if root == "" {
+	if len(roots) == 0 {
 		// Get parent dir.
-		root, err = getInput("Enter parent directory to scan for duplicates in: ", func(f string) bool {
+                root, err := getInput("Enter parent directory to scan for duplicates in: ", func(f string) bool {
 			i, err := os.Stat(f)
 			if err != nil {
 				return false
@@ -231,8 +228,9 @@ func runInteractive(dryRun bool, root string) error {
 		if err != nil {
 			return err
 		}
+                roots = []string{root}
 	}
-	dupes, err := getDupesAndPrintSummary(root)
+	dupes, err := getDupesAndPrintSummary(roots)
 	if err != nil {
 		return err
 	}
@@ -278,8 +276,8 @@ func runInteractive(dryRun bool, root string) error {
 	return nil
 }
 
-func runPrint(root string, output string) error {
-	dupes, err := getDupesAndPrintSummary(root)
+func runPrint(roots []string, output string) error {
+	dupes, err := getDupesAndPrintSummary(roots)
 	if err != nil {
 		return err
 	}
@@ -308,8 +306,8 @@ func runPrint(root string, output string) error {
 	return nil
 }
 
-func runAutomatic(dryRun bool, root string, prefer *regexp.Regexp, over *regexp.Regexp, invert bool) error {
-	dupes, err := getDupesAndPrintSummary(root)
+func runAutomatic(dryRun bool, roots []string, prefer *regexp.Regexp, over *regexp.Regexp, invert bool) error {
+	dupes, err := getDupesAndPrintSummary(roots)
 	if err != nil {
 		return err
 	}
