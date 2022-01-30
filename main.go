@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/cenkalti/log"
 	"github.com/cheggaaa/pb"
-	"github.com/codegangsta/cli"
+        "github.com/urfave/cli"
 	dupes "github.com/danmarg/undupes/libdupes"
 	"github.com/dustin/go-humanize"
 	"os"
@@ -29,125 +29,112 @@ func main() {
 	app := cli.NewApp()
 	app.Name = "undupes"
 	app.Usage = "manage duplicate files"
-	app.Author = "Daniel Margolis"
-	app.Email = "dan@af0.net"
 	app.Version = "0.1"
-	app.Commands = []cli.Command{
-		{
+	app.Commands = []*cli.Command{
+		&cli.Command{
 			Name:      "interactive",
-			ShortName: "i",
+			Aliases: []string{"i"},
 			Usage:     "interactive mode",
 			Flags: []cli.Flag{
-				cli.StringSliceFlag{
+				&cli.StringSliceFlag{
 					Name:  "directory, d",
 					Usage: "directory in which to find duplicates (required)",
 				},
-				cli.IntFlag{
+				&cli.IntFlag{
 					Name:  "v",
 					Usage: "log level",
 					Value: 3, // Don't print as much in interactive mode.
 				},
 			},
-			Action: func(c *cli.Context) {
+			Action: func(c *cli.Context) error {
 				if err := setLogLevel(c.Int("v")); err != nil {
-					fmt.Println(err)
-					return
+					return err
 				}
 				if err := runInteractive(c.Bool("dry_run"), c.StringSlice("directory")); err != nil {
-					fmt.Println(err)
+                                        return err
 				}
+                                return nil
 			},
 		},
 		{
 			Name:      "print",
-			ShortName: "p",
+			Aliases: []string{"p"},
 			Usage:     "print duplicates",
 			Flags: []cli.Flag{
-				cli.StringSliceFlag{
+				&cli.StringSliceFlag{
 					Name:  "directory, d",
 					Usage: "directory in which to find duplicates (required)",
 				},
-				cli.StringFlag{
+				&cli.StringFlag{
 					Name:  "output, o",
 					Usage: "output file",
 				},
 			},
-			Action: func(c *cli.Context) {
+			Action: func(c *cli.Context) error {
 				if len(c.StringSlice("directory")) == 0 {
-					fmt.Println("--directory required")
-					return
+					return fmt.Errorf("--directory required")
 				}
 				if c.String("output") == "" {
-					fmt.Println("--output required")
-					return
+					return fmt.Errorf("--output required")
 				}
-				if err := runPrint(c.StringSlice("directory"), c.String("output")); err != nil {
-					fmt.Println(err)
-				}
+				return runPrint(c.StringSlice("directory"), c.String("output"))
 			},
 		},
 		{
 			Name:      "auto",
-			ShortName: "a",
+			Aliases: []string{"a"},
 			Usage:     "automatically resolve duplicates",
 			Flags: []cli.Flag{
-				cli.StringSliceFlag{
+				&cli.StringSliceFlag{
 					Name:  "directory, d",
 					Usage: "directory in which to find duplicates (required)",
 				},
-				cli.StringFlag{
+				&cli.StringFlag{
 					Name:  "prefer, p",
 					Usage: "prefer to keep files matching this pattern",
 				},
-				cli.StringFlag{
+				&cli.StringFlag{
 					Name:  "over, o",
 					Usage: "used with --prefer; will restrict preferred files to those where the duplicate matches --over",
 				},
-				cli.BoolFlag{
+				&cli.BoolFlag{
 					Name:  "invert, i",
 					Usage: "invert matching logic; preferred files with be prioritized for deletion rather than retention",
 				},
-				cli.BoolFlag{
+				&cli.BoolFlag{
 					Name:  "dry_run",
 					Usage: "simulate (log but don't delete files)",
 				},
-				cli.IntFlag{
+				&cli.IntFlag{
 					Name:  "v",
 					Usage: "log level",
 					Value: 1,
 				},
 			},
-			Action: func(c *cli.Context) {
+			Action: func(c *cli.Context) error {
 				// Check for required arguments.
 				if len(c.StringSlice("directory")) == 0 {
-					fmt.Println("--directory is required")
-					return
+					return fmt.Errorf("--directory is required")
 				}
 				if c.String("prefer") == "" {
-					fmt.Println("--prefer is required")
-					return
+					return fmt.Errorf("--prefer is required")
 				}
 				if err := setLogLevel(c.Int("v")); err != nil {
-					fmt.Println(err)
-					return
+					return err
 				}
 				// Compile regexps.
 				var prefer, over *regexp.Regexp
 				var err error
 				if prefer, err = regexp.Compile(c.String("prefer")); err != nil {
-					fmt.Println("invalid regexp specified for --prefer")
-					return
+					return fmt.Errorf("invalid regexp specified for --prefer")
 				}
 				if c.String("over") != "" {
 					if over, err = regexp.Compile(c.String("over")); err != nil {
-						fmt.Println("invalid regexp specified for --over")
-						return
+						return fmt.Errorf("invalid regexp specified for --over")
 					}
 				}
 				// Do deduplication.
-				if err = runAutomatic(c.Bool("dry_run"), c.StringSlice("directory"), prefer, over, c.Bool("invert")); err != nil {
-					fmt.Println(err)
-				}
+				return runAutomatic(c.Bool("dry_run"), c.StringSlice("directory"), prefer, over, c.Bool("invert"))
 			},
 		},
 	}
