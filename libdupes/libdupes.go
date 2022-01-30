@@ -1,6 +1,7 @@
 package libdupes
 
 import (
+        "fmt"
 	md5 "crypto/md5"
 	"github.com/cenkalti/log"
 	"io"
@@ -75,6 +76,9 @@ func Dupes(roots []string, progressCb func(cur int, outof int)) ([]Info, error) 
 	pending := make(map[string]int64)
         for _, root := range roots {
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+                if info == nil {
+                        return fmt.Errorf("%s does not exist", path)
+                }
 		if info.IsDir() {
 			return nil
 		}
