@@ -99,7 +99,7 @@ func main() {
 				},
 				&cli.BoolFlag{
 					Name:  "invert, i",
-					Usage: "invert matching logic; preferred files with be prioritized for deletion rather than retention",
+					Usage: "invert matching logic; preferred files will be prioritized for deletion rather than retention",
 				},
 				&cli.BoolFlag{
 					Name:  "dry_run",
