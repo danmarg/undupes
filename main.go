@@ -30,8 +30,8 @@ func main() {
 	app.Name = "undupes"
 	app.Usage = "manage duplicate files"
 	app.Version = "0.1"
-	app.Commands = []*cli.Command{
-		&cli.Command{
+	app.Commands = []cli.Command{
+		cli.Command{
 			Name:      "interactive",
 			Aliases: []string{"i"},
 			Usage:     "interactive mode",
