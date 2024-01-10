@@ -6,7 +6,7 @@ Undupes is a little command-line tool to find and remove duplicate files. Duplic
 Building
 ========
 
-    $ GOPATH=`pwd` go get github.com/danmarg/undupes
+    $ go install github.com/danmarg/undupes@latest
     $ ./bin/undupes help
 
 Usage
