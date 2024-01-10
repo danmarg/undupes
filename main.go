@@ -3,15 +3,16 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"github.com/cenkalti/log"
-	"github.com/cheggaaa/pb"
-        "github.com/urfave/cli"
-	dupes "github.com/danmarg/undupes/libdupes"
-	"github.com/dustin/go-humanize"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/cenkalti/log"
+	"github.com/cheggaaa/pb"
+	dupes "github.com/danmarg/undupes/libdupes"
+	"github.com/dustin/go-humanize"
+	"github.com/urfave/cli"
 )
 
 // Horrible hack to convert -v to log Levels.
@@ -32,9 +33,9 @@ func main() {
 	app.Version = "0.1"
 	app.Commands = []cli.Command{
 		cli.Command{
-			Name:      "interactive",
+			Name:    "interactive",
 			Aliases: []string{"i"},
-			Usage:     "interactive mode",
+			Usage:   "interactive mode",
 			Flags: []cli.Flag{
 				&cli.StringSliceFlag{
 					Name:  "directory, d",
@@ -51,15 +52,15 @@ func main() {
 					return err
 				}
 				if err := runInteractive(c.Bool("dry_run"), c.StringSlice("directory")); err != nil {
-                                        return err
+					return err
 				}
-                                return nil
+				return nil
 			},
 		},
 		{
-			Name:      "print",
+			Name:    "print",
 			Aliases: []string{"p"},
-			Usage:     "print duplicates",
+			Usage:   "print duplicates",
 			Flags: []cli.Flag{
 				&cli.StringSliceFlag{
 					Name:  "directory, d",
@@ -81,9 +82,9 @@ func main() {
 			},
 		},
 		{
-			Name:      "auto",
+			Name:    "auto",
 			Aliases: []string{"a"},
-			Usage:     "automatically resolve duplicates",
+			Usage:   "automatically resolve duplicates",
 			Flags: []cli.Flag{
 				&cli.StringSliceFlag{
 					Name:  "directory, d",
@@ -184,9 +185,11 @@ func getDupesAndPrintSummary(roots []string) ([]dupes.Info, error) {
 		}
 		b.Set(cur)
 	})
-	b.Finish()
 	if err != nil {
 		return dupes, err
+	}
+	if b != nil {
+		b.Finish()
 	}
 	fcount := 0
 	tsize := int64(0)
@@ -205,7 +208,7 @@ func runInteractive(dryRun bool, roots []string) error {
 	var err error
 	if len(roots) == 0 {
 		// Get parent dir.
-                root, err := getInput("Enter parent directory to scan for duplicates in: ", func(f string) bool {
+		root, err := getInput("Enter parent directory to scan for duplicates in: ", func(f string) bool {
 			i, err := os.Stat(f)
 			if err != nil {
 				return false
@@ -215,7 +218,7 @@ func runInteractive(dryRun bool, roots []string) error {
 		if err != nil {
 			return err
 		}
-                roots = []string{root}
+		roots = []string{root}
 	}
 	dupes, err := getDupesAndPrintSummary(roots)
 	if err != nil {
