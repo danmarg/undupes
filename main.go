@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -26,17 +27,6 @@ func setLogLevel(l int) error {
 	return fmt.Errorf("invalid log level specified")
 }
 
-func createSymlink(dryRun bool, target, source string) {
-	if dryRun {
-		log.Noticef("DRY RUN: create symlink %s -> %s", target, source)
-		return
-	}
-	if err := os.Symlink(source, target); err != nil {
-		log.Warningf("error creating symlink %s -> %s: %v", target, source, err)
-	} else {
-		log.Noticef("created symlink %s -> %s", target, source)
-	}
-}
 func main() {
 	app := cli.NewApp()
 	app.Name = "undupes"
@@ -157,7 +147,7 @@ func main() {
 	app.RunAndExitOnError()
 }
 
-func remove(dryRun bool, file string) {
+func remove(dryRun bool, symlink bool, file string, keep string) {
 	if dryRun {
 		log.Noticef("DRY RUN: delete %s", file)
 	} else {
@@ -165,6 +155,18 @@ func remove(dryRun bool, file string) {
 			log.Warningf("error deleting %s: %v", file, err)
 		} else {
 			log.Noticef("deleted %s", file)
+		}
+		if symlink {
+			keep, err := filepath.Abs(keep)
+			if err != nil {
+				log.Warningf("error getting qualified path for %s: %v", keep, err)
+			}
+			if err := os.Symlink(keep, file); err != nil {
+				log.Warningf("error creating symlink %s -> %s: %v", file, keep, err)
+			} else {
+				log.Noticef("created symlink %s -> %s", file, keep)
+			}
+
 		}
 	}
 
@@ -273,7 +275,7 @@ func runInteractive(dryRun bool, roots []string) error {
 		if keep >= 0 {
 			for i, n := range dupe.Names {
 				if i != keep {
-					remove(dryRun, n)
+					remove(dryRun, false, n, dupe.Names[keep])
 				}
 			}
 		}
@@ -339,7 +341,9 @@ func runAutomatic(dryRun bool, roots []string, prefer *regexp.Regexp, over *rege
 		if len(p) > 0 { // If we found a preferred match.
 			// Generate debug line.
 			dbg := fmt.Sprintf("processing %s\n\tprefer: ", strings.Join(dupe.Names, ", "))
+			var keep string
 			for k := range p {
+				keep = k
 				dbg += k + ", "
 			}
 			if len(o) > 0 {
@@ -355,30 +359,26 @@ func runAutomatic(dryRun bool, roots []string, prefer *regexp.Regexp, over *rege
 					// If prefer and over are both specified, and both match, remove the non-preferred matches.
 					if invert {
 						for n := range p {
-							remove(dryRun, n)
+							remove(dryRun, symlink, n, keep)
 						}
 					} else {
 						for n := range o {
-							remove(dryRun, n)
+							remove(dryRun, symlink, n, keep)
 						}
 					}
 				}
 			} else {
 				// If over is not specified, keep only the preferred, but (for the case of --invert) only when preferred is not everything.
 				if len(p) < len(dupe.Names) {
- 					// Determine the source (preferred) file for symlinking.
- 					var source string
- 					for preferred := range p {
- 						source = preferred
- 						break // Assuming only one preferred file when len(p) < len(dupe.Names)
- 					}
+					// Determine the source (preferred) file for symlinking.
+					var source string
+					for preferred := range p {
+						source = preferred
+						break // Assuming only one preferred file when len(p) < len(dupe.Names)
+					}
 					for _, n := range dupe.Names {
 						if _, ok := p[n]; ok && invert || !ok && !invert {
- 							if symlink {
-								createSymlink(dryRun, n, source)
-							} else {
-								remove(dryRun, n)
-							}
+							remove(dryRun, symlink, n, source)
 						}
 					}
 				}
