@@ -26,6 +26,45 @@ func setLogLevel(l int) error {
 	return fmt.Errorf("invalid log level specified")
 }
 
+func createSymlink(dryRun bool, target, source string) {
+	if dryRun {
+		log.Noticef("DRY RUN: create symlink %s -> %s", target, source)
+		return
+	}
+
+	// Check for symlink support
+	tempDir, err := os.MkdirTemp("", "symlink_check")
+	if err != nil {
+		log.Warningf("Failed to create temporary directory for symlink check: %v", err)
+		return
+	}
+	defer os.RemoveAll(tempDir) // Clean up the temporary directory
+
+	tempFile := tempDir + "/temp_target"
+	tempSymlink := tempDir + "/temp_symlink"
+	f, err := os.Create(tempFile)
+	if err != nil {
+		log.Warningf("Failed to create temporary file for symlink check: %v", err)
+		return
+	}
+	f.Close()
+
+	err = os.Symlink(tempFile, tempSymlink)
+	if err != nil {
+		log.Warningf("Symlinks are not supported on this filesystem: %v", err)
+		return
+	}
+
+	os.Remove(tempFile)
+	os.Remove(tempSymlink)
+
+	// Proceed with actual symlink creation
+	if err := os.Symlink(source, target); err != nil {
+		log.Warningf("error creating symlink %s -> %s: %v", target, source, err)
+	} else {
+		log.Noticef("created symlink %s -> %s", target, source)
+	}
+}
 func main() {
 	app := cli.NewApp()
 	app.Name = "undupes"
@@ -111,6 +150,10 @@ func main() {
 					Usage: "log level",
 					Value: 1,
 				},
+				&cli.BoolFlag{
+					Name:  "symlink",
+					Usage: "create symbolic links instead of deleting duplicate files",
+				},
 			},
 			Action: func(c *cli.Context) error {
 				// Check for required arguments.
@@ -135,7 +178,7 @@ func main() {
 					}
 				}
 				// Do deduplication.
-				return runAutomatic(c.Bool("dry_run"), c.StringSlice("directory"), prefer, over, c.Bool("invert"))
+				return runAutomatic(c.Bool("dry_run"), c.StringSlice("directory"), prefer, over, c.Bool("invert"), c.Bool("symlink"))
 			},
 		},
 	}
@@ -147,7 +190,7 @@ func remove(dryRun bool, file string) {
 		log.Noticef("DRY RUN: delete %s", file)
 	} else {
 		if err := os.Remove(file); err != nil {
-			log.Warningf("error deleting %n: %v", file, err)
+			log.Warningf("error deleting %s: %v", file, err)
 		} else {
 			log.Noticef("deleted %s", file)
 		}
@@ -296,7 +339,7 @@ func runPrint(roots []string, output string) error {
 	return nil
 }
 
-func runAutomatic(dryRun bool, roots []string, prefer *regexp.Regexp, over *regexp.Regexp, invert bool) error {
+func runAutomatic(dryRun bool, roots []string, prefer *regexp.Regexp, over *regexp.Regexp, invert bool, symlink bool) error {
 	dupes, err := getDupesAndPrintSummary(roots)
 	if err != nil {
 		return err
@@ -351,9 +394,19 @@ func runAutomatic(dryRun bool, roots []string, prefer *regexp.Regexp, over *rege
 			} else {
 				// If over is not specified, keep only the preferred, but (for the case of --invert) only when preferred is not everything.
 				if len(p) < len(dupe.Names) {
+ 					// Determine the source (preferred) file for symlinking.
+ 					var source string
+ 					for preferred := range p {
+ 						source = preferred
+ 						break // Assuming only one preferred file when len(p) < len(dupe.Names)
+ 					}
 					for _, n := range dupe.Names {
 						if _, ok := p[n]; ok && invert || !ok && !invert {
-							remove(dryRun, n)
+ 							if symlink {
+								createSymlink(dryRun, n, source)
+							} else {
+								remove(dryRun, n)
+							}
 						}
 					}
 				}
