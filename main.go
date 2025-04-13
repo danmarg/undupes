@@ -31,34 +31,6 @@ func createSymlink(dryRun bool, target, source string) {
 		log.Noticef("DRY RUN: create symlink %s -> %s", target, source)
 		return
 	}
-
-	// Check for symlink support
-	tempDir, err := os.MkdirTemp("", "symlink_check")
-	if err != nil {
-		log.Warningf("Failed to create temporary directory for symlink check: %v", err)
-		return
-	}
-	defer os.RemoveAll(tempDir) // Clean up the temporary directory
-
-	tempFile := tempDir + "/temp_target"
-	tempSymlink := tempDir + "/temp_symlink"
-	f, err := os.Create(tempFile)
-	if err != nil {
-		log.Warningf("Failed to create temporary file for symlink check: %v", err)
-		return
-	}
-	f.Close()
-
-	err = os.Symlink(tempFile, tempSymlink)
-	if err != nil {
-		log.Warningf("Symlinks are not supported on this filesystem: %v", err)
-		return
-	}
-
-	os.Remove(tempFile)
-	os.Remove(tempSymlink)
-
-	// Proceed with actual symlink creation
 	if err := os.Symlink(source, target); err != nil {
 		log.Warningf("error creating symlink %s -> %s: %v", target, source, err)
 	} else {
