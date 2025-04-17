@@ -21,8 +21,8 @@ type filesWithHashes struct {
 
 // Info contains information on duplicate file sets--specifically, the per-file size in bytes and the file paths.
 type Info struct {
-	Size  int64
-	Names []string
+	Size  int64    `json:"size"`
+	Names []string `json:"names"`
 }
 
 type bySize []Info

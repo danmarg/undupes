@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 
+	"encoding/json"
+
 	"github.com/cenkalti/log"
 	"github.com/cheggaaa/pb"
 	dupes "github.com/danmarg/undupes/libdupes"
@@ -47,12 +49,17 @@ func main() {
 					Usage: "log level",
 					Value: 3, // Don't print as much in interactive mode.
 				},
+				&cli.StringFlag{
+					Name:  "cache",
+					Usage: "cache file",
+				},
 			},
 			Action: func(c *cli.Context) error {
 				if err := setLogLevel(c.Int("v")); err != nil {
 					return err
 				}
-				if err := runInteractive(c.Bool("dry_run"), c.StringSlice("directory")); err != nil {
+				// Pass cache path from flag to runInteractive
+				if err := runInteractive(c.Bool("dry_run"), c.StringSlice("directory"), c.String("cache")); err != nil {
 					return err
 				}
 				return nil
@@ -79,7 +86,14 @@ func main() {
 				if c.String("output") == "" {
 					return fmt.Errorf("--output required")
 				}
-				return runPrint(c.StringSlice("directory"), c.String("output"))
+				// Pass cache path from flag to runPrint (which passes it to getDupesAndPrintSummary)
+				// Although print command doesn't have a --cache flag, we might reuse getDupesAndPrintSummary
+				// Need to decide if print should *get* a --cache flag or always compute.
+				// For now, assume it should compute, pass "" for cachePath.
+				// If print should *use* cache, it needs its own --cache flag.
+				// Let's add a cache flag to print for consistency.
+				// return runPrint(c.StringSlice("directory"), c.String("output"), "") // Old way without cache for print
+				return runPrint(c.StringSlice("directory"), c.String("output"), c.String("cache")) // Pass cache
 			},
 		},
 		{
@@ -116,6 +130,10 @@ func main() {
 					Name:  "symlink",
 					Usage: "create symbolic links instead of deleting duplicate files",
 				},
+				&cli.StringFlag{
+					Name:  "cache",
+					Usage: "cache file",
+				},
 			},
 			Action: func(c *cli.Context) error {
 				// Check for required arguments.
@@ -140,7 +158,8 @@ func main() {
 					}
 				}
 				// Do deduplication.
-				return runAutomatic(c.Bool("dry_run"), c.StringSlice("directory"), prefer, over, c.Bool("invert"), c.Bool("symlink"))
+				// Pass cache path from flag to runAutomatic
+				return runAutomatic(c.Bool("dry_run"), c.StringSlice("directory"), prefer, over, c.Bool("invert"), c.Bool("symlink"), c.String("cache"))
 			},
 		},
 	}
@@ -193,35 +212,91 @@ func getInput(prompt string, validator func(string) bool) (string, error) {
 	return val, nil
 }
 
-func getDupesAndPrintSummary(roots []string) ([]dupes.Info, error) {
+// getDupesAndPrintSummary finds duplicates, optionally using a cache file.
+// It prints a summary of the found duplicates.
+func getDupesAndPrintSummary(roots []string, cachePath string) ([]dupes.Info, error) {
+	// Check cache first
+	if cachePath != "" {
+		data, err := os.ReadFile(cachePath)
+		if err == nil {
+			var cachedDupes []dupes.Info
+			err = json.Unmarshal(data, &cachedDupes)
+			if err == nil {
+				fmt.Printf("Loaded %d duplicate sets from cache: %s\n", len(cachedDupes), cachePath)
+				// Print summary from cached data
+				fcount := 0
+				tsize := int64(0)
+				for _, i := range cachedDupes {
+					fcount += len(i.Names) - 1
+					tsize += i.Size * int64(len(i.Names)-1)
+				}
+				fmt.Printf("Total file count (cached): %d\n", fcount)
+				fmt.Printf("Total size used (cached): %s\n", humanize.Bytes(uint64(tsize)))
+				return cachedDupes, nil // Return cached data
+			}
+			// Log error and fall through to recompute if unmarshal fails
+			log.Warningf("Failed to unmarshal cache file %s: %v. Recomputing duplicates.", cachePath, err)
+		} else if !os.IsNotExist(err) {
+			// Log error and fall through to recompute if read fails for reasons other than non-existence
+			log.Warningf("Failed to read cache file %s: %v. Recomputing duplicates.", cachePath, err)
+		}
+		// If file doesn't exist (os.IsNotExist), we also fall through to compute.
+	}
+
+	// --- Compute Duplicates ---
 	fmt.Printf("Indexing...")
 	var b *pb.ProgressBar
-	dupes, err := dupes.Dupes(roots, func(cur int, outof int) {
+	// Rename 'dupes' to 'computedDupes' to avoid confusion with cachedDupes
+	computedDupes, err := dupes.Dupes(roots, func(cur int, outof int) {
 		if b == nil {
 			b = pb.StartNew(outof)
 		}
 		b.Set(cur)
 	})
+	// Note: 'err' here is from dupes.Dupes
 	if err != nil {
-		return dupes, err
+		return computedDupes, err // Return immediately if Dupes failed
 	}
 	if b != nil {
 		b.Finish()
 	}
+	// --- Print Summary ---
 	fcount := 0
 	tsize := int64(0)
-	for _, i := range dupes {
+	// Iterate over computedDupes
+	for _, i := range computedDupes {
 		fcount += len(i.Names) - 1
 		tsize += i.Size * int64(len(i.Names)-1)
 	}
 
-	fmt.Printf("\rFound %d sets of duplicate files\n", len(dupes))
+	fmt.Printf("\rFound %d sets of duplicate files\n", len(computedDupes))
 	fmt.Printf("Total file count: %d\n", fcount)
 	fmt.Printf("Total size used: %s\n", humanize.Bytes(uint64(tsize)))
-	return dupes, err
+
+	// --- Save to Cache (if path specified and we computed) ---
+	// This block is only reached if we didn't return early with cached data.
+	if cachePath != "" {
+		jsonData, marshalErr := json.MarshalIndent(computedDupes, "", "  ")
+		if marshalErr != nil {
+			// Log marshalling error, but still return computed dupes below
+			log.Warningf("Failed to marshal duplicates to JSON: %v", marshalErr)
+		} else {
+			writeErr := os.WriteFile(cachePath, jsonData, 0644) // Use 0644 permissions
+			if writeErr != nil {
+				// Log writing error, but still return computed dupes below
+				log.Warningf("Failed to write cache file %s: %v", cachePath, writeErr)
+			} else {
+				fmt.Printf("Saved %d duplicate sets to cache: %s\n", len(computedDupes), cachePath)
+			}
+		}
+	}
+
+	// Return computedDupes and the error from dupes.Dupes (which might be nil)
+	return computedDupes, err
 }
 
-func runInteractive(dryRun bool, roots []string) error {
+
+func runInteractive(dryRun bool, roots []string, cachePath string) error {
 	var err error
 	if len(roots) == 0 {
 		// Get parent dir.
@@ -237,10 +312,12 @@ func runInteractive(dryRun bool, roots []string) error {
 		}
 		roots = []string{root}
 	}
-	dupes, err := getDupesAndPrintSummary(roots)
+	// Pass cachePath down
+	d, err := getDupesAndPrintSummary(roots, cachePath)
 	if err != nil {
 		return err
 	}
+	dupes := d // Assign to avoid potential unused variable if cache load works
 
 	fmt.Printf("\nReviewing results:\nFor each duplicate fileset, select 'f' to delete all but the first file, 'a' to keep all files, or 'n' (e.g. 2) to delete all except the second file.\n")
 
@@ -283,11 +360,13 @@ func runInteractive(dryRun bool, roots []string) error {
 	return nil
 }
 
-func runPrint(roots []string, output string) error {
-	dupes, err := getDupesAndPrintSummary(roots)
+func runPrint(roots []string, output string, cachePath string) error {
+	// Pass cachePath down
+	d, err := getDupesAndPrintSummary(roots, cachePath)
 	if err != nil {
 		return err
 	}
+	dupes := d
 
 	var f *os.File
 	if output != "" {
@@ -313,11 +392,13 @@ func runPrint(roots []string, output string) error {
 	return nil
 }
 
-func runAutomatic(dryRun bool, roots []string, prefer *regexp.Regexp, over *regexp.Regexp, invert bool, symlink bool) error {
-	dupes, err := getDupesAndPrintSummary(roots)
+func runAutomatic(dryRun bool, roots []string, prefer *regexp.Regexp, over *regexp.Regexp, invert bool, symlink bool, cachePath string) error {
+	// Pass cachePath down
+	d, err := getDupesAndPrintSummary(roots, cachePath)
 	if err != nil {
 		return err
 	}
+	dupes := d
 
 	for _, dupe := range dupes {
 		p := make(map[string]struct{})
