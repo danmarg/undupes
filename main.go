@@ -372,14 +372,19 @@ func runAutomatic(dryRun bool, roots []string, prefer *regexp.Regexp, over *rege
 				if len(p) < len(dupe.Names) {
 					// Determine the source (preferred) file for symlinking.
 					var source string
-					for preferred := range p {
-						source = preferred
-						break // Assuming only one preferred file when len(p) < len(dupe.Names)
-					}
+					toRemove := []string{}
 					for _, n := range dupe.Names {
 						if _, ok := p[n]; ok && invert || !ok && !invert {
-							remove(dryRun, symlink, n, source)
+							toRemove = append(toRemove, n)
+						} else {
+							// Find a source for symlinking
+							if source == "" {
+								source = n
+							}
 						}
+					}
+					for _, n := range(toRemove) {
+						remove(dryRun, symlink, n, source)
 					}
 				}
 
